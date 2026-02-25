@@ -87,7 +87,11 @@ Deploying **Brainwave** involves setting up a Python-based environment, installi
 
 5. **Configure Environment Variables**
 
-   Brainwave requires the OpenAI API key to function. Set the `OPENAI_API_KEY` environment variable:
+   Brainwave requires the OpenAI API key to function. You can set it via environment variables or a `.env` file (loaded via `python-dotenv`):
+
+   - **Required:** `OPENAI_API_KEY` – for realtime transcription and Readability/Correctness
+   - **Optional:** `OPENAI_REALTIME_MODEL` – default `gpt-realtime-mini-2025-12-15`; `OPENAI_REALTIME_MODALITIES` – default `text`
+   - **For Readability/Correctness (Gemini):** `GOOGLE_API_KEY` – for Gemini-based text enhancement
 
    - **On macOS/Linux:**
 
@@ -132,7 +136,7 @@ Understanding the architecture of **Brainwave** provides insights into its real-
 #### a. `realtime_server.py`
 
 - **Framework:** Utilizes **FastAPI** to handle HTTP and WebSocket connections, offering high performance and scalability.
-- **WebSocket Endpoint:** Establishes a `/ws` endpoint for real-time audio streaming between the client and server.
+- **WebSocket Endpoint:** Establishes a `/api/v1/ws` endpoint for real-time audio streaming between the client and server.
 - **Audio Processing:**
   - **`AudioProcessor` Class:** Resamples incoming audio data from 48kHz to 24kHz to match OpenAI's requirements.
   - **Buffer Management:** Accumulates audio chunks for efficient processing and transmission.
@@ -156,6 +160,7 @@ Understanding the architecture of **Brainwave** provides insights into its real-
 #### a. `static/realtime.html`
 
 - **User Interface:** Provides a clean and responsive UI for users to interact with Brainwave, featuring:
+  - **Model Selection:** Dropdown to choose between `gpt-realtime-mini-2025-12-15` (default) and `gpt-realtime-1.5`.
   - **Recording Controls:** A toggle button to start and stop audio recording.
   - **Transcript Display:** A section to display the transcribed and summarized text in real-time.
   - **Copy Functionality:** Enables users to easily copy the summarized text.
@@ -169,7 +174,11 @@ Understanding the architecture of **Brainwave** provides insights into its real-
 
 ### 3. **Configuration**
 
-#### a. `requirements.txt`
+#### a. `config.py`
+
+- **Model & Modalities:** Loads `OPENAI_REALTIME_MODEL` (default `gpt-realtime-mini-2025-12-15`) and `OPENAI_REALTIME_MODALITIES` (default `text`) from environment variables.
+
+#### b. `requirements.txt`
 
 Lists all Python dependencies required to run Brainwave, ensuring that the environment is set up with compatible packages:
 
@@ -177,9 +186,9 @@ Lists all Python dependencies required to run Brainwave, ensuring that the envir
 
 Brainwave leverages a suite of predefined prompts to enhance text processing capabilities:
 
-- **Paraphrasing:** Corrects speech-to-text errors and improves punctuation without altering the original meaning.
+- **Paraphrasing:** Corrects speech-to-text errors and improves punctuation without altering the original meaning (used for realtime transcription).
 - **Readability Enhancement:** Improves the readability of transcribed text by adding appropriate punctuation and formatting.
-- **Summary Generation:** Creates concise and logical summaries from the user's spoken input, making ideas easier to review and manage.
+- **Correctness Check:** Analyzes text for factual accuracy.
 
 These prompts are meticulously crafted to ensure that the transcribed text is not only accurate but also contextually rich and user-friendly.
 
@@ -258,9 +267,9 @@ To run the tests:
 
 1. **Install Test Dependencies**
 
-   The test dependencies are included in `requirements.txt`. Make sure you have them installed:
+   The test dependencies are included in `requirements.txt` (pytest, pytest-cov, pytest-asyncio, pytest-mock, httpx). Make sure they are installed:
    ```bash
-   pip install pytest pytest-asyncio pytest-mock httpx
+   pip install -r requirements.txt
    ```
 
 2. **Run Tests**
