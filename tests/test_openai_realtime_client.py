@@ -34,6 +34,7 @@ async def test_connect_success(client):
         expected_update = {
             "type": "session.update",
             "session": {
+                "type": "realtime",
                 "modalities": ["text"],
                 "input_audio_format": "pcm16",
                 "input_audio_transcription": {"model": "gpt-4o-transcribe"},

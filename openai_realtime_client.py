@@ -25,7 +25,6 @@ class OpenAIRealtimeAudioTextClient(RealtimeClientBase):
         """Connect to OpenAI's realtime API and configure the session"""
         headers = {
             "Authorization": f"Bearer {self.api_key}",
-            "OpenAI-Beta": "realtime=v1",
         }
 
         # Support both websockets param names across versions: extra_headers (older) and additional_headers (newer)
@@ -49,6 +48,7 @@ class OpenAIRealtimeAudioTextClient(RealtimeClientBase):
             logger.info(f"Session created with ID: {self.session_id}")
             
             session_config_payload = {
+                "type": "realtime" if session_mode == "conversation" else "transcription",
                 "modalities": modalities,
                 "input_audio_format": "pcm16",
             }
