@@ -65,3 +65,36 @@ def test_get_realtime_page():
     response = client.get("/")
     assert response.status_code == 200
     assert "text/html" in response.headers["content-type"]
+
+
+def test_health_check():
+    response = client.get("/health")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+
+
+def test_get_old_redirects_to_root():
+    response = client.get("/old", follow_redirects=False)
+    assert response.status_code == 302
+    assert response.headers["location"] == "/"
+
+
+def test_get_main_js():
+    response = client.get("/static/main.js")
+    assert response.status_code == 200
+    assert "application/javascript" in response.headers.get("content-type", "")
+    assert "Cache-Control" in response.headers
+
+
+def test_readability_prompt_not_found():
+    with patch('realtime_server.PROMPTS', {}):
+        request = ReadabilityRequest(text="Test")
+        response = client.post("/api/v1/readability", json=request.model_dump())
+        assert response.status_code == 500
+
+
+def test_correctness_prompt_not_found():
+    with patch('realtime_server.PROMPTS', {}):
+        request = CorrectnessRequest(text="Test")
+        response = client.post("/api/v1/correctness", json=request.model_dump())
+        assert response.status_code == 500

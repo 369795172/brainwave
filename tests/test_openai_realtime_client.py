@@ -138,3 +138,23 @@ async def test_receive_messages(client):
         await receive_task
     except asyncio.CancelledError:
         pass
+
+
+@pytest.mark.asyncio
+async def test_send_instructions_audio_file_not_found(client):
+    """When instructions.wav does not exist, send_instructions_audio does nothing."""
+    with patch('os.path.exists', return_value=False):
+        await client.send_instructions_audio()
+    # No exception, no send_audio call
+
+
+@pytest.mark.asyncio
+async def test_send_audio_when_ws_closed(client):
+    """When WebSocket is closed, send_audio logs error and does not send."""
+    mock_ws = MagicMock()
+    mock_ws.open = False
+    mock_ws.closed = True
+    client.ws = mock_ws
+
+    await client.send_audio(b"test")
+    mock_ws.send.assert_not_called()

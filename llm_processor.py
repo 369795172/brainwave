@@ -29,7 +29,7 @@ class GeminiProcessor(LLMProcessor):
         all_prompt = f"{prompt}\n\n{text}"
         model_name = model or self.default_model
         logger.info(f"Using model: {model_name} for processing")
-        logger.info(f"Prompt: {all_prompt}")
+        logger.debug(f"Prompt (length={len(all_prompt)} chars)")
         genai_model = genai.GenerativeModel(model_name)
         response = await genai_model.generate_content_async(
             all_prompt,
@@ -43,7 +43,7 @@ class GeminiProcessor(LLMProcessor):
         all_prompt = f"{prompt}\n\n{text}"
         model_name = model or self.default_model
         logger.info(f"Using model: {model_name} for sync processing")
-        logger.info(f"Prompt: {all_prompt}")
+        logger.debug(f"Prompt (length={len(all_prompt)} chars)")
         genai_model = genai.GenerativeModel(model_name)
         response = genai_model.generate_content(all_prompt)
         return response.text
@@ -60,7 +60,7 @@ class GPTProcessor(LLMProcessor):
         all_prompt = f"{prompt}\n\n{text}"
         model_name = model or self.default_model
         logger.info(f"Using model: {model_name} for processing")
-        logger.info(f"Prompt: {all_prompt}")
+        logger.debug(f"Prompt (length={len(all_prompt)} chars)")
         response = await self.async_client.chat.completions.create(
             model=model_name,
             messages=[
@@ -76,7 +76,7 @@ class GPTProcessor(LLMProcessor):
         all_prompt = f"{prompt}\n\n{text}"
         model_name = model or self.default_model
         logger.info(f"Using model: {model_name} for sync processing")
-        logger.info(f"Prompt: {all_prompt}")
+        logger.debug(f"Prompt (length={len(all_prompt)} chars)")
         response = self.sync_client.chat.completions.create(
             model=model_name,
             messages=[

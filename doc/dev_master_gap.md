@@ -79,10 +79,22 @@
 2. 删除 `xai_integration_plan.md`、`xai_vs_openai_comparison.md`（若存在）
 
 ### Phase 7：测试
-- [ ] WebSocket 录音（`/`）
-- [ ] 模型选择（mini / 1.5）
-- [ ] IndexedDB Replay
-- [ ] Readability / Correctness 按钮
+- [x] WebSocket 录音（`/`）
+- [x] 模型选择（mini / 1.5）
+- [x] IndexedDB Replay
+- [x] Readability / Correctness 按钮
+
+---
+
+## 执行完成记录（2025-02-25）
+
+合并与清理已全部完成：
+
+- **Phase 1–4**：dev 合并 master，删除 X.AI、WebRTC、Gemini 转录
+- **Phase 5–6**：模型选项（mini + 1.5）、config 清理、删除 md 文件
+- **Phase 7**：功能测试通过
+
+当前 master 仅保留：OpenAI WebSocket realtime、Readability、Correctness、IndexedDB Replay、模型选择、config.py。
 
 ---
 
