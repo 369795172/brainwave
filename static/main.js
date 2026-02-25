@@ -597,15 +597,6 @@ async function startRecording() {
         const modelSelect = document.getElementById('modelSelect');
         const selectedModel = modelSelect ? modelSelect.value : 'gpt-realtime-mini-2025-12-15';
         
-        // Determine provider and model based on selection
-        let provider = 'openai';
-        let model = selectedModel;
-        
-        if (selectedModel === 'xai-grok') {
-            provider = 'xai';
-            model = null;  // x.ai doesn't use model parameter
-        }
-        
         // Create session in IndexedDB
         if (storageAvailable) {
             await createSession();
@@ -613,8 +604,7 @@ async function startRecording() {
         
         const startMessage = { 
             type: 'start_recording', 
-            provider: provider,
-            model: model
+            model: selectedModel
         };
         console.log('Sending start_recording:', startMessage);
         await ws.send(JSON.stringify(startMessage));
@@ -735,19 +725,9 @@ async function replayLastRecording() {
         const modelSelect = document.getElementById('modelSelect');
         const selectedModel = modelSelect ? modelSelect.value : 'gpt-realtime-mini-2025-12-15';
         
-        // Determine provider and model based on selection
-        let provider = 'openai';
-        let model = selectedModel;
-        
-        if (selectedModel === 'xai-grok') {
-            provider = 'xai';
-            model = null;
-        }
-        
         const startMessage = { 
             type: 'start_recording', 
-            provider: provider,
-            model: model
+            model: selectedModel
         };
         console.log('Sending start_recording:', startMessage);
         await ws.send(JSON.stringify(startMessage));

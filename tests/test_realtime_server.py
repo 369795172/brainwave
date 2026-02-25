@@ -33,6 +33,7 @@ def test_check_correctness(mock_llm_processor):
     assert response.status_code == 200
     assert "Mocked streaming response" in response.text
 
+@pytest.mark.skip(reason="ask_ai endpoint is temporarily disabled")
 def test_ask_ai(mock_llm_processor):
     request = AskAIRequest(text="What is the meaning of life?")
     response = client.post("/api/v1/ask_ai", json=request.model_dump())

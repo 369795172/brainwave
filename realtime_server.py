@@ -2,15 +2,13 @@ import asyncio
 import json
 import os
 import numpy as np
-from fastapi import FastAPI, WebSocket, Request, HTTPException, UploadFile, File
+from fastapi import FastAPI, WebSocket, Request, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse, StreamingResponse, RedirectResponse
 import uvicorn
 import logging
 from prompts import PROMPTS
 from openai_realtime_client import OpenAIRealtimeAudioTextClient
-from xai_realtime_client import XAIRealtimeAudioTextClient
-from realtime_client_base import RealtimeClientBase
 from starlette.websockets import WebSocketState
 import wave
 import scipy.signal
@@ -21,15 +19,7 @@ from llm_processor import get_llm_processor
 from datetime import datetime, timedelta
 import time
 import websockets
-import httpx
-from config import (
-    OPENAI_REALTIME_MODEL,
-    OPENAI_REALTIME_MODALITIES,
-    OPENAI_REALTIME_SESSION_TTL_SEC,
-    XAI_API_KEY,
-    XAI_REALTIME_MODALITIES,
-    REALTIME_PROVIDER,
-)
+from config import OPENAI_REALTIME_MODEL, OPENAI_REALTIME_MODALITIES
 
 # Gemini transcription import is deferred to runtime inside the endpoint
 
@@ -86,90 +76,11 @@ async def get_realtime_page(request: Request):
     # Default to WebSocket version (old version)
     return FileResponse("static/realtime.html")
 
-@app.get("/transcribe", response_class=HTMLResponse)
-async def get_transcribe_page(request: Request):
-    return FileResponse("static/transcribe.html")
-
-@app.get("/webrtc", response_class=HTMLResponse)
-async def get_webrtc_page(request: Request):
-    # Redirect to root (WebSocket version)
-    return RedirectResponse(url="/", status_code=302)
-
 @app.get("/old", response_class=HTMLResponse)
 async def get_old_ws_page(request: Request):
     # Redirect to root (WebSocket version)
     return RedirectResponse(url="/", status_code=302)
 
-
-class CreateRealtimeSessionResponse(BaseModel):
-    success: bool = Field(default=True)
-    data: dict = Field(default_factory=dict)
-
-class CreateRealtimeSessionRequest(BaseModel):
-    model: Optional[str] = Field(default=None, description="OpenAI Realtime model to use. Defaults to OPENAI_REALTIME_MODEL if not provided.")
-
-@app.post(
-    "/api/v1/realtime/session",
-    response_model=CreateRealtimeSessionResponse,
-    summary="Create ephemeral OpenAI Realtime WebRTC session",
-    description=(
-        "Mint a short-lived client key for the browser to establish a WebRTC session "
-        "directly with OpenAI Realtime. This endpoint never returns the server API key."
-    )
-)
-async def create_realtime_session(request: CreateRealtimeSessionRequest):
-    try:
-        # Use provided model or fall back to default
-        model = request.model if request.model else OPENAI_REALTIME_MODEL
-        default_instructions = PROMPTS.get('paraphrase-gpt-realtime-enhanced', '')
-        payload = {
-            "model": model,
-            "modalities": OPENAI_REALTIME_MODALITIES,
-            # Use our transcription-oriented system prompt at the session level
-            "instructions": default_instructions,
-            # Enable live transcription deltas; no auto response creation
-            "input_audio_transcription": {"model": "gpt-4o-transcribe"},
-            "turn_detection": {
-                "type": "server_vad",
-                "threshold": 0.5,
-                "prefix_padding_ms": 0,
-                "silence_duration_ms": 3000,
-                "create_response": True,
-                "interrupt_response": False
-            }
-        }
-
-        headers = {
-            "Authorization": f"Bearer {OPENAI_API_KEY}",
-            "Content-Type": "application/json",
-        }
-
-        async with httpx.AsyncClient(timeout=15) as client:
-            resp = await client.post(
-                "https://api.openai.com/v1/realtime/sessions",
-                headers=headers,
-                json=payload,
-            )
-            if resp.status_code >= 400:
-                logger.error(f"OpenAI realtime session error: {resp.status_code} {resp.text}")
-                raise HTTPException(status_code=502, detail="Failed to create realtime session")
-            data = resp.json()
-            # Attach default instructions (same as WS flow) for client convenience
-            data["default_instructions"] = default_instructions
-            return CreateRealtimeSessionResponse(success=True, data=data)
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error creating realtime session: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Internal error creating realtime session")
-
-@app.get(
-    "/api/v1/realtime/default_prompt",
-    summary="Get default WebRTC instructions",
-    description="Return the default system instructions used for WebRTC text-only sessions.",
-)
-async def get_default_realtime_prompt():
-    return {"instructions": PROMPTS.get('paraphrase-gpt-realtime-enhanced', '')}
 
 class AudioProcessor:
     def __init__(self, target_sample_rate=24000):
@@ -260,51 +171,19 @@ async def websocket_endpoint(websocket: WebSocket):
             logger.warning("Buffered text discarded after removing marker prefix.")
         await emit_text_delta(buffered_text)
     
-    async def create_realtime_client(provider: str = None, model: str = None) -> RealtimeClientBase:
-        """
-        Factory function to create appropriate realtime client.
-        
-        Args:
-            provider: Provider name ("openai" or "xai"). Defaults to REALTIME_PROVIDER config.
-            model: Model name (for OpenAI). Defaults to OPENAI_REALTIME_MODEL.
-                      For x.ai, use "xai-grok", "xai", or any model name starting with "grok-".
-        
-        Returns:
-            RealtimeClientBase instance
-        """
-        provider = provider or REALTIME_PROVIDER
-        
-        if provider == "xai":
-            api_key = XAI_API_KEY
-            if not api_key:
-                raise ValueError("XAI_API_KEY not set in environment variables")
-            logger.info("Creating x.ai client (text-only mode, no voice needed)")
-            return XAIRealtimeAudioTextClient(api_key)
-        else:  # default to openai
-            api_key = OPENAI_API_KEY
-            if not api_key:
-                raise ValueError("OPENAI_API_KEY not set in environment variables")
-            selected_model = model or OPENAI_REALTIME_MODEL
-            logger.info(f"Creating OpenAI client with model: {selected_model}")
-            return OpenAIRealtimeAudioTextClient(api_key, model=selected_model)
+    async def create_realtime_client(model: str = None) -> OpenAIRealtimeAudioTextClient:
+        """Create OpenAI realtime client with given model."""
+        selected_model = model or OPENAI_REALTIME_MODEL
+        logger.info(f"Creating OpenAI client with model: {selected_model}")
+        return OpenAIRealtimeAudioTextClient(OPENAI_API_KEY, model=selected_model)
     
-    async def initialize_realtime_client(provider: str = None, model: str = None, voice: str = None):
+    async def initialize_realtime_client(model: str = None):
         nonlocal client
         try:
-            # Clear the ready flag while initializing
             openai_ready.clear()
-            
-            # Create client using factory function
-            client = await create_realtime_client(provider=provider, model=model)
-            
-            # Pass appropriate modalities based on provider
-            provider_name = provider or REALTIME_PROVIDER
-            if provider_name == "xai":
-                await client.connect(modalities=XAI_REALTIME_MODALITIES)
-            else:
-                await client.connect(modalities=OPENAI_REALTIME_MODALITIES)
-            
-            logger.info(f"Successfully connected to {provider_name} client")
+            client = await create_realtime_client(model=model)
+            await client.connect(modalities=OPENAI_REALTIME_MODALITIES)
+            logger.info("Successfully connected to OpenAI client")
             
             # Register handlers after client is initialized
             client.register_handler("session.updated", lambda data: handle_generic_event("session.updated", data))
@@ -322,15 +201,11 @@ async def websocket_endpoint(websocket: WebSocket):
             client.register_handler("response.text.delta", lambda data: handle_text_delta(data))
             # GA: response.text.delta → response.output_text.delta
             client.register_handler("response.output_text.delta", lambda data: handle_text_delta(data))
-            client.register_handler("response.output_audio_transcript.delta", lambda data: handle_text_delta(data))
             client.register_handler("response.created", lambda data: handle_response_created(data))
-            # x.ai specific message types
             client.register_handler("input_audio_buffer.speech_stopped", lambda data: handle_generic_event("input_audio_buffer.speech_stopped", data))
             client.register_handler("input_audio_buffer.committed", lambda data: handle_generic_event("input_audio_buffer.committed", data))
             client.register_handler("conversation.item.added", lambda data: handle_generic_event("conversation.item.added", data))
             client.register_handler("conversation.item.input_audio_transcription.completed", lambda data: handle_generic_event("conversation.item.input_audio_transcription.completed", data))
-            client.register_handler("response.output_audio_transcript.done", lambda data: handle_generic_event("response.output_audio_transcript.done", data))
-            client.register_handler("response.output_audio.delta", lambda data: handle_generic_event("response.output_audio.delta", data))
             client.register_handler("response.output_audio.done", lambda data: handle_generic_event("response.output_audio.done", data))
             client.register_handler("ping", lambda data: handle_generic_event("ping", data))
             
@@ -341,8 +216,7 @@ async def websocket_endpoint(websocket: WebSocket):
             }, ensure_ascii=False))
             return True
         except Exception as e:
-            provider_name = provider or REALTIME_PROVIDER
-            logger.error(f"Failed to connect to {provider_name} client: {e}")
+            logger.error(f"Failed to connect to OpenAI client: {e}")
             openai_ready.clear()  # Ensure flag is cleared on failure
             await websocket.send_text(json.dumps({
                 "type": "error",
@@ -524,25 +398,9 @@ async def websocket_endpoint(websocket: WebSocket):
                             "type": "status",
                             "status": "connecting"
                         }, ensure_ascii=False))
-                        # Extract provider and model from message
-                        provider = msg.get("provider")  # "openai" or "xai"
-                        model = msg.get("model")  # OpenAI model name
-                        # voice parameter is deprecated for x.ai (not needed for text-only output)
-                        
-                        logger.info(f"Received start_recording: provider={provider}, model={model}")
-                        
-                        # Determine provider based on model if not explicitly provided
-                        if not provider:
-                            if model and (model.startswith("grok-") or model == "xai" or model == "xai-grok"):
-                                provider = "xai"
-                                logger.info(f"Auto-detected provider as 'xai' based on model: {model}")
-                            else:
-                                provider = "openai"
-                                logger.info(f"Auto-detected provider as 'openai' based on model: {model}")
-                        else:
-                            logger.info(f"Using explicit provider: {provider}")
-                        
-                        if not await initialize_realtime_client(provider=provider, model=model):
+                        model = msg.get("model")
+                        logger.info(f"Received start_recording: model={model}")
+                        if not await initialize_realtime_client(model=model):
                             continue
                         recording_stopped.clear()
                         pending_audio_chunks.clear()
@@ -570,13 +428,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             try:
                                 await client.commit_audio()
                                 logger.info("Audio committed, starting response...")
-                                # Use text-only modalities for x.ai if configured
-                                if isinstance(client, XAIRealtimeAudioTextClient):
-                                    modalities = XAI_REALTIME_MODALITIES
-                                    await client.start_response(PROMPTS['paraphrase-gpt-realtime-enhanced'], modalities=modalities)
-                                else:
-                                    # OpenAI client doesn't accept modalities parameter
-                                    await client.start_response(PROMPTS['paraphrase-gpt-realtime-enhanced'])
+                                await client.start_response(PROMPTS['paraphrase-gpt-realtime-enhanced'])
                                 logger.info("Response started successfully")
                             except Exception as e:
                                 logger.error(f"Error committing/starting response on stop: {str(e)}", exc_info=True)
@@ -726,97 +578,6 @@ async def check_correctness(request: CorrectnessRequest):
     except Exception as e:
         logger.error(f"Error checking correctness: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Error processing correctness check.")
-
-# Pydantic model for documenting Gemini transcription SSE data
-class GeminiTranscriptionSSEData(BaseModel):
-    text_chunk: str | None = None
-    error: str | None = None
-
-@app.post(
-    "/api/v1/transcribe_gemini",
-    summary="Transcribe Audio with Gemini (SSE)",
-    description=(
-        "Upload an audio file (M4A format assumed by the backend Gemini client) to be transcribed using Google's Gemini model." 
-        "The transcription will be streamed back to the client using Server-Sent Events (SSE).\n\n"
-        "**SSE Event Format:**\n\n"
-        "Each SSE event will typically be a message event (default event type):\n"
-        "```\n"
-        "data: {\"text_chunk\": \"some transcribed text\"}\n"
-        "```\n\n"
-        "If an error occurs during processing, an error event will be sent:\n"
-        "```\n"
-        "event: error\n"
-        "data: {\"error\": \"Error message details\"}\n"
-        "```\n\n"
-        "The stream concludes when the connection is closed by the server after transcription is complete or an unrecoverable error occurs.\n"
-        "The `GOOGLE_API_KEY` environment variable must be set on the server.\n"
-        "The audio file is sent as part of a multipart/form-data request."
-    )
-)
-async def transcribe_gemini_sse(request: Request, file: UploadFile = File(...)):
-    logger.info(f"Received file for Gemini transcription: {file.filename}, content type: {file.content_type}")
-    
-    request_processed_successfully = False # Initialize here
-
-    # Defer import of Gemini client so that the server can run without the Google SDK
-    try:
-        from gemini_client import generate_transcription_stream  # type: ignore
-    except Exception as e:
-        logger.warning(f"Gemini client unavailable: {e}")
-        async def error_sse_generator_unavailable():
-            yield f"event: error\ndata: {json.dumps({'error': 'Gemini transcription not available on this server. Install google-genai and set GOOGLE_API_KEY, or disable this endpoint.'}, ensure_ascii=False)}\n\n"
-        return StreamingResponse(error_sse_generator_unavailable(), media_type="text/event-stream")
-
-    # Read the file content immediately to avoid I/O on closed file issues later
-    # especially with how StreamingResponse might handle the file object lifecycle.
-
-    try:
-        # Read the entire file into memory immediately.
-        audio_bytes = await file.read()
-        # It's good practice to close the upload file explicitly after reading, 
-        # though FastAPI might do this upon request completion.
-        await file.close()
-    except Exception as e:
-        logger.error(f"Error reading or closing uploaded file {file.filename}: {e}", exc_info=True)
-        # This error happens before SSE stream starts, so an HTTP error is more appropriate if we weren't committed to SSE for all comms.
-        # For now, we'll let it fall through to the generator, which will yield an SSE error.
-        # To make it more robust, we could return an HTTPException here.
-        # However, to keep SSE error reporting consistent:
-        async def error_sse_generator():
-            error_payload = json.dumps({'error': f'Failed to read uploaded file: {str(e)}'})
-            yield f"event: error\ndata: {error_payload}\n\n"
-        return StreamingResponse(error_sse_generator(), media_type="text/event-stream")
-
-    # This inner generator now takes the bytes and filename, not the UploadFile object.
-    async def sse_event_generator_for_bytes(audio_data: bytes, filename_for_logging: str):
-        nonlocal request_processed_successfully
-        logger.info(f"Starting Gemini SSE generation for pre-read audio: {filename_for_logging}")
-        try:
-            prompt = PROMPTS.get("gemini-transcription")
-            if not prompt:
-                error_detail = "Gemini transcription prompt not found in prompts.py."
-                logger.error(error_detail)
-                yield f"event: error\ndata: {json.dumps({'error': error_detail}, ensure_ascii=False)}\n\n"
-                return
-
-            async for chunk in generate_transcription_stream(audio_data, prompt):
-                json_payload = json.dumps({"text_chunk": chunk}, ensure_ascii=False)
-                yield f"data: {json_payload}\n\n"
-                request_processed_successfully = True # Mark as successful if at least one chunk is sent
-        except ValueError as ve:
-            logger.error(f"ValueError during Gemini transcription for {filename_for_logging}: {ve}", exc_info=True)
-            yield f"event: error\ndata: {json.dumps({'error': str(ve)}, ensure_ascii=False)}\n\n"
-        except RuntimeError as re:
-            logger.error(f"RuntimeError during Gemini transcription for {filename_for_logging}: {re}", exc_info=True)
-            yield f"event: error\ndata: {json.dumps({'error': str(re)}, ensure_ascii=False)}\n\n"
-        except Exception as e:
-            logger.error(f"Unexpected error during Gemini transcription stream for {filename_for_logging}: {e}", exc_info=True)
-            # Send a generic error to the client
-            yield f"event: error\ndata: {json.dumps({'error': 'An unexpected error occurred during transcription.'}, ensure_ascii=False)}\n\n"
-        finally:
-            logger.info(f"Closing SSE event generator for {filename_for_logging}. Success: {request_processed_successfully}")
-
-    return StreamingResponse(sse_event_generator_for_bytes(audio_bytes, file.filename), media_type="text/event-stream")
 
 if __name__ == '__main__':
     uvicorn.run(app, host="0.0.0.0", port=3005)
