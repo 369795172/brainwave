@@ -123,6 +123,7 @@ async def create_realtime_session(request: CreateRealtimeSessionRequest):
         model = request.model if request.model else OPENAI_REALTIME_MODEL
         default_instructions = PROMPTS.get('paraphrase-gpt-realtime-enhanced', '')
         payload = {
+            "type": "realtime",
             "model": model,
             "modalities": OPENAI_REALTIME_MODALITIES,
             # Use our transcription-oriented system prompt at the session level
@@ -320,7 +321,8 @@ async def websocket_endpoint(websocket: WebSocket):
             client.register_handler("response.done", lambda data: handle_response_done(data))
             client.register_handler("error", lambda data: handle_error(data))
             client.register_handler("response.text.delta", lambda data: handle_text_delta(data))
-            # x.ai uses response.output_audio_transcript.delta instead of response.text.delta
+            # GA: response.text.delta → response.output_text.delta; x.ai uses response.output_audio_transcript.delta
+            client.register_handler("response.output_text.delta", lambda data: handle_text_delta(data))
             client.register_handler("response.output_audio_transcript.delta", lambda data: handle_text_delta(data))
             client.register_handler("response.created", lambda data: handle_response_created(data))
             # x.ai specific message types

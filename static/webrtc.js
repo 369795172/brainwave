@@ -205,12 +205,13 @@ async function startRecording() {
             transcript.value = '';
             break;
           }
-          case 'response.text.delta': {
+          case 'response.text.delta':
+          case 'response.output_text.delta': {
             const text = msg.delta || msg.text || '';
             if (text) {
               transcript.value += text;
               transcript.scrollTop = transcript.scrollHeight;
-              logRTC('Appended response.text.delta to transcript', { len: text.length, tailPreview: text.slice(-20) });
+              logRTC('Appended text delta to transcript', { len: text.length, tailPreview: text.slice(-20) });
             }
             break;
           }
