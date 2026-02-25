@@ -123,7 +123,6 @@ async def create_realtime_session(request: CreateRealtimeSessionRequest):
         model = request.model if request.model else OPENAI_REALTIME_MODEL
         default_instructions = PROMPTS.get('paraphrase-gpt-realtime-enhanced', '')
         payload = {
-            "type": "realtime",
             "model": model,
             "modalities": OPENAI_REALTIME_MODALITIES,
             # Use our transcription-oriented system prompt at the session level
