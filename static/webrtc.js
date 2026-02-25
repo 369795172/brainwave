@@ -113,7 +113,7 @@ function stopTimer() {
 
 async function fetchEphemeralSession() {
   const modelSelect = document.getElementById('modelSelect');
-  const selectedModel = modelSelect ? modelSelect.value : 'gpt-realtime';
+  const selectedModel = modelSelect ? modelSelect.value : 'gpt-realtime-1.5';
   const resp = await fetch('/api/v1/realtime/session', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -253,7 +253,7 @@ async function startRecording() {
     const clientSecret = data?.client_secret?.value || data?.client_secret || data?.clientSecret || '';
     if (!clientSecret) throw new Error('No ephemeral client secret returned');
 
-    const sdpResp = await fetch(`https://api.openai.com/v1/realtime?model=${encodeURIComponent(data?.model || 'gpt-realtime')}`, {
+    const sdpResp = await fetch(`https://api.openai.com/v1/realtime?model=${encodeURIComponent(data?.model || 'gpt-realtime-1.5')}`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${clientSecret}`,
